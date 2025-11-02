@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="ar">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Catch the Stars — موقع لعبة بسيط</title>
+  <style>
+    :root{
+      --bg: #0f1724;
+      --card: #0b1220AA;
+      --accent: #62d6ff;
+      --muted: #9aa8b2;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+    }
+    html,body{height:100%;margin:0;background:linear-gradient(180deg,#081226 0%, #0f1724 100%);color:#e6f0ff}
+    .wrap{max-width:980px;margin:36px auto;padding:20px}
+    header{display:flex;align-items:center;justify-content:space-between;gap:12px}
+    h1{font-size:1.6rem;margin:0}
+    p.lead{color:var(--muted);margin:6px 0 18px}
+    .card{background:var(--card);backdrop-filter: blur(6px);padding:16px;border-radius:12px;box-shadow:0 6px 20px rgba(2,6,23,.6)}
+    #game-area{display:flex;gap:18px;align-items:flex-start}
+    canvas{background:linear-gradient(180deg,#071428,#0d1930);border-radius:10px;box-shadow: inset 0 2px 8px rgba(255,255,255,0.02)}
+    .sidebar{width:260px}
+    button{background:transparent;border:1px solid #1f3a4b;color:var(--accent);padding:8px 12px;border-radius:8px;cursor:pointer}
+    .info{color:var(--muted);font-size:.95rem;margin-top:10px}
+    footer{color:var(--muted);font-size:.85rem;margin-top:18px}
+    .controls{display:flex;gap:8px;margin-top:8px}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div>
+        <h1>موقع لعبة بسيطة — Catch the Stars</h1>
+        <p class="lead">حرك الصندوق باش تجمع أكبر عدد ديال النجوم قبل ما يطيحو للأرض. استعمل ← → أو اللمس.</p>
+      </div>
+      <div><small class="info">مبني بـ HTML / CSS / JavaScript (canvas)</small></div>
+    </header>
+
+    <section class="card" id="game-area">
+      <canvas id="game" width="640" height="420"></canvas>
+
+      <aside class="sidebar">
+        <div>
+          <strong>النقاط:</strong>
+          <div id="score" style="font-size:1.6rem;margin:8px 0">0</div>
+
+          <div class="controls">
+            <button id="start">ابدأ اللعبة</button>
+            <button id="pause">إيقاف مؤقت</button>
+            <button id="reset">إعادة</button>
+          </div>
+
+          <div class="info">
+            <p><strong>قوانين اللعب:</strong></p>
+            <ul>
+              <li>حرك الصندوق يمين/يسار لالتقاط النجوم.</li>
+              <li>كل نجمة = +1 نقطة.</li>
+              <li>خسارة إذا وصلت نجمة للأرض بدون التقاط.</li>
+            </ul>
+          </div>
+        </div>
+      </aside>
+    </section>
+
+    <footer class="card">
+      <div>باش تشغل محلياً: احفظ الملف وافتحه فالمتصفح، أو من التيرمنال شغل <code>python -m http.server 8000</code> وزور <code>http://localhost:8000</code>.</div>
+    </footer>
+  </div>
+
+  <!-- 🎵 صوت الخلفية -->
+  <audio id="bgmusic" loop>
+    <source src="music.mp3" type="audio/mpeg">
+  </audio>
+
+  <script>
+  (function(){
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width, H = canvas.height;
+    const music = document.getElementById('bgmusic');
+
+    // Player
+    const player = { w:100, h:16, x:(W-100)/2, y:H-36, speed:6, vx:0 };
+
+    let stars = [];
+    let score = 0;
+    let running = false;
+    let paused = false;
+    let spawnTimer = 0;
+    let spawnInterval = 60;
+    let gravity = 2;
+    const scoreEl = document.getElementById('score');
+
+    function reset(){
+      stars = [];
+      score = 0;
+      running = false;
+      paused = false;
+      spawnTimer = 0;
+      player.x = (W-player.w)/2;
+      scoreEl.textContent = score;
+      music.pause();
+      music.currentTime = 0;
+    }
+
+    function start(){
+      if(!running){
+        running = true;
+        paused = false;
+        // تشغيل الموسيقى
+        music.play().catch(()=>{});
+        loop();
+      }
+    }
+
+    function togglePause(){
+      paused = !paused;
+      if(paused){ music.pause(); }
+      else{ music.play().catch(()=>{}); }
+    }
+
+    function spawnStar(){
+      const size = 14 + Math.random()*14;
+      stars.push({
+        x: Math.random()*(W - size),
+        y: -size,
+        r: size,
+        vy: 1 + Math.random()*1.5
+      });
+    }
+
+    const keys = {};
+    window.addEventListener('keydown', e => { keys[e.key] = true; });
+    window.addEventListener('keyup', e => { keys[e.key] = false; });
+
+    canvas.addEventListener('touchmove', e => {
+      const rect = canvas.getBoundingClientRect();
+      const localX = e.touches[0].clientX - rect.left;
+      player.x = Math.max(0, Math.min(W-player.w, localX - player.w/2));
+    });
+
+    function update(){
+      if(!running || paused) return;
+      spawnTimer++;
+      if(spawnTimer >= spawnInterval){
+        spawnTimer = 0;
+        spawnStar();
+        if(spawnInterval > 20) spawnInterval -= 0.5;
+      }
+
+      if(keys['ArrowLeft'] || keys['a']) player.x -= player.speed;
+      if(keys['ArrowRight'] || keys['d']) player.x += player.speed;
+      player.x = Math.max(0, Math.min(W-player.w, player.x));
+
+      for(let i=stars.length-1;i>=0;i--){
+        const s = stars[i];
+        s.vy += 0.04;
+        s.y += s.vy + gravity*0.02;
+        if(s.y + s.r >= player.y && s.y <= player.y + player.h &&
+           s.x + s.r >= player.x && s.x <= player.x + player.w){
+          stars.splice(i,1);
+          score++;
+          scoreEl.textContent = score;
+          continue;
+        }
+        if(s.y - s.r > H){
+          running = false;
+          showGameOver();
+          music.pause();
+          return;
+        }
+      }
+    }
+
+    function draw(){
+      ctx.clearRect(0,0,W,H);
+      ctx.fillStyle = "#071428";
+      ctx.fillRect(0,0,W,H);
+      for(const s of stars) drawStar(s.x + s.r/2, s.y + s.r/2, Math.max(3, Math.round(s.r/4)));
+      ctx.fillStyle = "#62d6ff";
+      roundRect(ctx, player.x, player.y, player.w, player.h, 6);
+    }
+
+    function drawStar(cx, cy, spikes){
+      const outer = 8 + Math.random()*6;
+      const inner = outer/2.4;
+      let rot = Math.PI/2 * 3;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - outer);
+      for(let i=0;i<spikes;i++){
+        let x = cx + Math.cos(rot) * outer;
+        let y = cy + Math.sin(rot) * outer;
+        ctx.lineTo(x,y);
+        rot += Math.PI / spikes;
+        x = cx + Math.cos(rot) * inner;
+        y = cy + Math.sin(rot) * inner;
+        ctx.lineTo(x,y);
+        rot += Math.PI / spikes;
+      }
+      ctx.closePath();
+      ctx.fillStyle = "#fff3b0";
+      ctx.fill();
+    }
+
+    function roundRect(ctx,x,y,w,h,r){
+      ctx.beginPath();
+      ctx.moveTo(x+r,y);
+      ctx.arcTo(x+w,y,x+w,y+h,r);
+      ctx.arcTo(x+w,y+h,x,y+h,r);
+      ctx.arcTo(x,y+h,x,y,r);
+      ctx.arcTo(x,y,x+w,y,r);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    function loop(){
+      update();
+      draw();
+      if(running && !paused) requestAnimationFrame(loop);
+    }
+
+    function showGameOver(){
+      ctx.fillStyle = "rgba(2,6,12,0.7)";
+      ctx.fillRect(0,0,W,H);
+      ctx.fillStyle = "#fff";
+      ctx.textAlign = "center";
+      ctx.font = "28px Arial";
+      ctx.fillText("Game Over", W/2, H/2 - 8);
+      ctx.font = "18px Arial";
+      ctx.fillText("النقاط: " + score, W/2, H/2 + 20);
+    }
+
+    document.getElementById('start').addEventListener('click', start);
+    document.getElementById('pause').addEventListener('click', togglePause);
+    document.getElementById('reset').addEventListener('click', () => { reset(); draw(); });
+
+    reset();
+    draw();
+  })();
+  </script>
+</body>
+</html>
+
